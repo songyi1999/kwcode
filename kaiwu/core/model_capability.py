@@ -37,7 +37,7 @@ STRATEGIES = {
         force_plan_mode=True,
         max_files_per_task=2,
         max_functions_per_task=5,
-        max_retries=1,
+        max_retries=3,
         search_trigger_after=1,
         complexity_warning_threshold=2,
     ),

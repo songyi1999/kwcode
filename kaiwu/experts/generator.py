@@ -228,13 +228,6 @@ class GeneratorExpert:
         # 需要整文件scope的任务：重构（提取函数/拆分类）或综合任务（bug+refactor）
         # 判断条件：任务需要新增类/函数，或测试要求代码行数缩短/拆分
         if self._needs_whole_file_scope(ctx, files, funcs):
-            # 多bug任务逐bug拆解（首次attempt，多个失败测试）
-            initial_failure = getattr(ctx, 'initial_test_failure', '') or ''
-            if ctx.best_tests_passed == 0 and self._count_distinct_bugs(initial_failure) >= 4:
-                result = self._run_bug_decomposed(ctx, files)
-                if result:
-                    return result
-                # fallback到whole_file_refactor
             # Retry时用targeted_fix（基于当前磁盘状态，带函数级定位）
             if ctx.best_tests_passed > 0:
                 return self._run_targeted_fix(ctx, files)
@@ -2416,6 +2409,8 @@ class GeneratorExpert:
                     break
 
         return "\n\n".join(snippets)
+
+    def _run_stub_decomposed(self, ctx: TaskContext, files: list[str], funcs: list[str]) -> Optional[dict]:
         """
         Sub-task decomposition for stub tasks.
         Instead of asking LLM to implement all pass functions at once,

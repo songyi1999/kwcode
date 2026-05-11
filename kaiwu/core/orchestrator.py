@@ -202,7 +202,7 @@ class PipelineOrchestrator:
                 llm._on_llm_call = _llm_hook
 
         # 任务级超时看门狗
-        TASK_TIMEOUT_S = 300  # 单任务最长5分钟
+        TASK_TIMEOUT_S = 600  # 单任务最长10分钟（32B模型3次采样+execution_feedback需要更多时间）
         _watchdog_triggered = threading.Event()
 
         def _watchdog_timer():

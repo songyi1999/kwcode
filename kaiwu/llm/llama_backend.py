@@ -43,9 +43,9 @@ class LLMBackend:
     # Models known to use thinking/reasoning tokens that consume num_predict budget
     REASONING_PREFIXES = ("deepseek-r1", "qwq", "qwen3", "gemma4")
     # Multiplier for num_predict when using reasoning models
-    # 8b模型thinking较短，用3x；大模型用8x
+    # 8b模型thinking较短，用1.5x（之前3x导致本地超时）；大模型用8x
     REASONING_TOKEN_MULTIPLIER = 8
-    REASONING_TOKEN_MULTIPLIER_SMALL = 3  # for <=8b models
+    REASONING_TOKEN_MULTIPLIER_SMALL = 3  # for <=8b models (2x/1.5x会截断代码，3x是正确值)
 
     # ModelScope model mapping for China network auto-switching
     MODELSCOPE_MODELS = {
