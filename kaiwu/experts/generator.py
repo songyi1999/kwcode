@@ -228,16 +228,17 @@ class GeneratorExpert:
         # 需要整文件scope的任务：重构（提取函数/拆分类）或综合任务（bug+refactor）
         # 判断条件：任务需要新增类/函数，或测试要求代码行数缩短/拆分
         if self._needs_whole_file_scope(ctx, files, funcs):
-            # Retry时：优先尝试ReAct循环（多轮交互），fallback到targeted_fix
-            if ctx.retry_count >= 1:
+            # 复杂任务(多文件/rename)首次就用ReAct; 简单任务retry时才用
+            use_react_first = self._is_complex_task(ctx, files, funcs)
+            if use_react_first or ctx.retry_count >= 1:
                 react_result = self._try_react_loop(ctx, files)
                 if react_result:
                     return react_result
-                # ReAct失败，如果有best_state用targeted_fix，否则再试whole_file
+                # ReAct失败，fallback
                 if ctx.best_tests_passed > 0:
                     return self._run_targeted_fix(ctx, files)
                 return self._run_whole_file_refactor(ctx, files)
-            # 首次attempt始终用whole_file_refactor（更稳定，t04靠这个PASS）
+            # 非复杂任务首次: whole_file_refactor（t04等靠这个PASS）
             return self._run_whole_file_refactor(ctx, files)
 
         # For each file+function pair, extract original and generate modified
@@ -462,13 +463,23 @@ class GeneratorExpert:
         elif test_failure:
             prompt += f"\n\n## 当前测试失败详情\n{test_failure[-2000:]}\n"
 
-        # Inject retry_hint: 只传一句话总结，不传完整历史
+        # Inject retry_hint: 高通过率时保留完整诊断，聚焦修复
         if ctx.retry_hint:
-            # 截断 retry_hint，避免注入过多历史
             hint = ctx.retry_hint
-            if len(hint) > 300:
-                hint = hint[:300] + "..."
-            prompt += f"\n\n## 重试提示\n{hint}"
+            v = ctx.verifier_output or {}
+            tests_passed = v.get("tests_passed", 0)
+            tests_total = v.get("tests_total", 0)
+            if tests_total > 0 and tests_passed >= tests_total - 2 and tests_passed > 0:
+                # 差1-2个测试: 保留完整诊断，聚焦指令
+                prompt += (
+                    f"\n\n## 精准修复（已通过 {tests_passed}/{tests_total}）\n"
+                    f"只有 {tests_total - tests_passed} 个测试失败，只修这个问题，不要改其他代码。\n\n"
+                    f"{hint}\n"
+                )
+            elif len(hint) > 800:
+                prompt += f"\n\n## 重试提示\n{hint[:800]}..."
+            else:
+                prompt += f"\n\n## 重试提示\n{hint}"
 
         system = self._build_system(ctx)
 
@@ -1203,6 +1214,22 @@ class GeneratorExpert:
                     if len(lines) > 60 and ('refactor' in combined_test_info.lower() or
                                             'shorter' in combined_test_info.lower()):
                         return True
+
+        return False
+
+    def _is_complex_task(self, ctx, files: list[str], funcs: list[str]) -> bool:
+        """检测需要首次就用ReAct的复杂任务（多文件/rename/refactor跨文件）"""
+        user_input = ctx.user_input.lower()
+        non_test_files = [f for f in files if "test" not in f.lower()]
+
+        # 多个非测试目标文件
+        if len(non_test_files) >= 2:
+            return True
+
+        # rename/refactor关键词 + 有目标文件
+        rename_kw = ["rename", "重命名", "split", "拆分", "move", "迁移"]
+        if any(kw in user_input for kw in rename_kw) and len(non_test_files) >= 1:
+            return True
 
         return False
 
@@ -2606,8 +2633,11 @@ class GeneratorExpert:
         # 所有tier都允许ReAct（小模型步数少一些）
         # 注意：retry_count检查已移到调用方（generator.run()中 ctx.retry_count>=1 才进入此分支）
 
-        # 过滤测试文件
-        target_files = [f for f in files[:3] if "test" not in f.lower()]
+        # 过滤测试文件，rename任务扩展文件数
+        user_lower = ctx.user_input.lower()
+        is_rename = any(kw in user_lower for kw in ["rename", "重命名", "refactor", "重构"])
+        file_limit = 8 if is_rename else 3
+        target_files = [f for f in files[:file_limit] if "test" not in f.lower()]
         if not target_files:
             return None
 

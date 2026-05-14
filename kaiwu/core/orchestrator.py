@@ -1279,6 +1279,16 @@ class PipelineOrchestrator:
 
             ctx._last_ver_passed = current_passed
 
+        # 高通过率聚焦: 差1-2个测试时prepend精准指令
+        v = ctx.verifier_output or {}
+        tp = v.get("tests_passed", 0)
+        tt = v.get("tests_total", 0)
+        if tt > 0 and tp >= tt - 2 and tp > 0:
+            hint = (
+                f"你已通过 {tp}/{tt} 个测试，只有 {tt - tp} 个失败。\n"
+                f"只修复下面指出的问题，不要改动其他代码。\n\n"
+            ) + hint
+
         return hint
 
     def _should_search(self, error_type: str, retry_count: int) -> bool:

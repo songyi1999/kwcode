@@ -247,11 +247,32 @@ class ReactLoop:
             f"## 项目根目录: {ctx.project_root}",
             f"## 目标文件: {', '.join(target_files)}",
         ]
+        # rename/refactor任务追加规则
+        user_lower = ctx.user_input.lower()
+        if any(kw in user_lower for kw in ["rename", "重命名", "refactor", "重构"]):
+            parts.append("")
+            parts.append("## 重命名/重构规则")
+            parts.append("- 必须用grep找到所有引用点，不能只改目标文件")
+            parts.append("- 修改顺序：先改定义，再改所有调用点")
+            parts.append("- 全部改完再run_test")
         return "\n".join(parts)
 
     def _build_initial_message(self, ctx, target_files: list[str]) -> str:
         """构建初始消息，包含任务描述和当前失败信息。"""
         parts = [f"## 任务\n{ctx.user_input}"]
+
+        # 检测rename/refactor任务，注入多文件策略
+        user_lower = ctx.user_input.lower()
+        rename_kw = ["rename", "重命名", "refactor", "重构", "split", "拆分"]
+        if any(kw in user_lower for kw in rename_kw):
+            parts.append(
+                "\n## 多文件重命名策略\n"
+                "1. 先用 grep 搜索旧名称，找到所有包含它的文件\n"
+                "2. 逐个 read_file 读取每个相关文件\n"
+                "3. 逐个 write_file 修改每个文件中的所有引用\n"
+                "4. 最后 run_test 验证\n"
+                "不要遗漏任何文件中的引用！"
+            )
 
         # 当前测试失败信息
         if ctx.verifier_output:
